@@ -4,13 +4,14 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 from database import models
 from database.hash import Hash
-from auth.oauth2 import create_access_token
+from datetime import datetime
 import re
 
 router = APIRouter(prefix="/register", tags=["registration"])
 
 
 class RegisterRequest(BaseModel):
+    fullName: str
     email: str
     password: str
 
@@ -29,6 +30,12 @@ def send_confirmation_email(email):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    if not request.fullName:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Full name is required",
+        )
+
     if not is_valid_email(request.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -41,32 +48,34 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
             detail="Password must be at least 12 characters",
         )
 
-    user = db.query(models.User).filter(models.User.email == request.email).first()
+    employee = (
+        db.query(models.DbEmployee)
+        .filter(models.DbEmployee.email == request.email.lower())
+        .first()
+    )
 
-    if user:
+    if employee:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email is already registered",
         )
 
-    new_user = models.User(
+    new_employee = models.DbEmployee(
+        fullName=request.fullName,
         email=request.email.lower(),
-        hashed_password=Hash.hash_password(request.password),
+        password=Hash.hash_password(request.password),
+        creationTimestamp=datetime.now(),
+        updatedTimestamp=datetime.now(),
+        isActive=True,
     )
 
-    db.add(new_user)
+    db.add(new_employee)
     db.commit()
-    db.refresh(new_user)
+    db.refresh(new_employee)
 
-    send_confirmation_email(request.email)
-
-    access_token = create_access_token(data={"sub": request.email})
+    send_confirmation_email(new_employee.email)
 
     return {
         "message": "User registered successfully",
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user_id": new_user.id,
-        "email": request.email,
         "redirect_url": "/login",
     }

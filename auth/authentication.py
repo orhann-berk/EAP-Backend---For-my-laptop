@@ -14,12 +14,16 @@ router = APIRouter(tags=["authentication"])
 def get_token(
     request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
-    user = db.query(models.User).filter(models.User.email == request.username).first()
+    user = (
+        db.query(models.DbEmployee)
+        .filter(models.DbEmployee.email == request.username)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
-    if not Hash.verify(request.password, user.hashed_password):
+    if not Hash.verify(request.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password"
         )
